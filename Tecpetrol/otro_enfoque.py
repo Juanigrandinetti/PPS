@@ -1,95 +1,89 @@
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy import stats
+from threading import Thread
+from time import sleep
 
-def regresion_lineal(data):
-  m, b, r_value, p_value, std_err = stats.linregress(range(len(data)), data)
-  return m, b
+def alarma():
+    # Intervalo entre 2 muestras
+    dt = 1
 
-# Supongamos que los datos llegan cada 1 segundo
-dt = 1
+    # x es un coeficiente que expresa la comparación entre la derivada de la 
+    # Temperatura del Proceso contra la derivada de la Temperatura del Ambiente
+    x  = 0.1
 
-# Importar datos del Excel
-# Datos:
-# Temperatura Proceso
-# Temperatura Ambiente
-# Velocidad de vibración
-df = pd.read_excel(r'C:\Users\juani\PPS\Tecpetrol\Sushi_Datos.xlsx',
-                  sheet_name = 'Sushi_Datos')
+    # Arrays para almacenar los valores que envían los Sushi Sensor
+    # Se van a calcular las pendientes en cada punto asi que se requiere de un
+    # array
+    tempp = []
+    tempa = []
 
-# Selección de columnas de interés del Excel
-df = df.iloc[:,[2, 3, 4]]
+    # El array "sum" será utilizado para comparar la derivada de la Temperatura
+    # Ambiente contra la derivada de la Temperatura del Proceso.
+    # Se van a comparar de a 5 muestras asi que se requiere de un array
+    sum   = []
 
-# Selección de rango de datos de interés
-df = df.iloc[60:]
+    # Esta variable será enviada para reportar si el proceso está inactivo
+    # Valores: 0/1
+    alarma              = 0
 
-# Convsersión de columna de DataFrame a un array
-tProceso = df['Temperatura Proceso'].tolist()
-tAmbiente = df['Temperatura Ambiente'].tolist()
-tVelocidad = df['Velocidad'].tolist()
-# Regresión Lineal de la Temperatura Ambiente
-m1, b = regresion_lineal(tAmbiente)
-ta = []
-for i in range(len(tAmbiente)):
-    ta.append((m1*i) + b)
-# Visualizar la gráfica de la Temperatura Ambiente
-plt.plot(ta)
-plt.scatter(np.linspace(0, len(tAmbiente), len(tAmbiente)), tAmbiente, color = 'blue')
-plt.plot(tAmbiente, color = 'orange')
-plt.show()
-# Conclusión: la derivada de la Temperatura del Proceso, si está operativo, entonces será relativamente mayor que la derivada de la
-# Temperatura Ambiente.
+    while(1):
+        # Lógica para recibir datos del CI Server
+        # ---------------------
+        # ---------------------
+        # Estas variables se van a modificar por el dato que manda el Sushi Sensor
+        dato_sushi_proceso  = 0
+        dato_sushi_ambiente = 0
+        # ---------------------
+        # ---------------------
+        tempp.append(dato_sushi_proceso)
+        tempa.append(dato_sushi_ambiente)
 
-# El código implementado en CI Server va a empezar con:
-# while(1):
-# Un alternativa es correr una sub rutina que se active cada vez que recibe un nuevo dato, para que el código no corra innecesariamente
-# En este caso, tengo el array con los datos de temperatura asi que será un bucle for
-tempp = []
-tempa = []
-tpd   = []
-tad   = []
-y     = []
-for i in range(len(tProceso)):
-    # Simular que los datos llegan en serie y se guardan en un array
-    tempp.append(tProceso[i])
-    tempa.append(tAmbiente[i])
-    # Necesito al menos 2 datos para calcular la pendiente en 1 punto
-    if len(tempp) > 1:
-        # Cálculo de la pendiente en t = ti de la Temperatura del Proceso y la Temperatura Ambiente
-        mp = regresion_lineal(tempp[len(tempp) - 2:len(tempp)])[0]
-        ma = regresion_lineal(tempa[len(tempa) - 2:len(tempa)])[0]
-        tpd.append(mp)
-        tad.append(ma)
-        # Si la Temperatura Ambiente no es parecida a la Temperatura del Proceso
-        if mp > 0: y.append(1)
-        elif mp == 0:
-            try:
-                y.append(y[i - 1])
-            except IndexError: y.append(0)
-        else: y.append(0)
-        # La Temperatura del Proceso se asemeja a la Temperatura Ambiente, el proceso probablemente esté inactivo
-    # Si tengo menos de 2 datos no hago nada
-    else: continue
-fig2, axp = plt.subplots()
-axp.set_xlabel = ('Tiempo (s)')
-axp.plot(y, color = 'orange')
-axp.tick_params(axis = 'y', labelcolor = 'tab:orange')
-axs = axp.twinx()
-axs.plot(tProceso, color = 'blue')
-axp.tick_params(axis = 'y', labelcolor = 'tab:blue')
-fig2.tight_layout()
-plt.show()
-#plt.scatter(np.linspace(1, 100, 734), pen)
-#plt.show()
-fig, ax1 = plt.subplots()
-ax1.set_xlabel('Tiempo (s)')
-ax1.scatter(np.linspace(0, 734, 734), tProceso[:734], color = 'tab:blue')
-ax1.plot(tProceso, color = 'tab:orange')
-ax1.tick_params(axis = 'y', labelcolor = 'tab:blue')
-ax2 = ax1.twinx()
-ax2.plot(tpd, color = 'tab:orange')
-ax2.scatter(np.linspace(0, 734, 734), tpd)
-ax2.tick_params(axis = 'y', labelcolor = 'tab:orange')
-fig.tight_layout()
-plt.show()
+        if len(tempp) > 1:
+            mp = (tempp[len(tempp) - 1] - tempp[len(tempp) - 2])/dt
+            ma = (tempa[len(tempa) - 1] - tempa[len(tempa) - 2])/dt
+            sum.append('on') if abs(ma) < x*abs(mp) else sum.append('off')
+            if len(sum) > 4:
+                if not 'on' in sum[len(sum) - 5:len(sum)]:
+                    alarma = 1
+                    # Transmición Sushi Sensor minutos + 5 minutos = 35 minutos = 35*(60 segundos)
+                    # GAP de 5 minutos para prevenir retardos
+                    # Suponiendo que el Sushi Sensor transmite datos cada 30 minutos
+                    sleep(35.0*60.0)
+                else:
+                    if mp > 0:
+                        alarma = 0
+                        sleep(35.0*60.0)
+                    elif mp == 0:
+                        try:
+                            alarma = alarma
+                            sleep(35.0*60.0)
+                        except IndexError:
+                            alarma = 1
+                            sleep(35.0*60.0)
+                    else:
+                        alarma = 1
+                        sleep(35.0*60.0)
+            else:
+                if mp > 0:
+                    alarma = 0
+                    sleep(35.0*60.0)
+                elif mp == 0:
+                    try:
+                        alarma = alarma
+                        sleep(35.0*60.0)
+                    except IndexError:
+                        alarma = 1
+                        sleep(35.0*60.0)
+                else:
+                    alarma = 1
+                    sleep(35.0*60.0)
+        else:
+            sleep(35.0*60.0)
+            continue
+# Crear un hilo secundario que ejecute la función "alarma"
+hilo_secundario_1 = Thread(target = alarma)
+
+# Encolar el hilo secundario en el sistema operativo
+hilo_secundario_1.start()
+
+# Obligar al hilo principal, "Ci_Server.py" en este caso, a que espere que termine de ejectuarse el hilo secundario 1
+# para poder continuar con el resto del código. En este caso, el hilo secundario nunca termina
+hilo_secundario_1.join()
